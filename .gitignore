@@ -1,0 +1,7 @@
+.vscode
+examples/
+libwebsockets/
+minnet-quickjs/
+quickjs-*.tar.xz
+dist/
+quickjs-2020-07-05/
