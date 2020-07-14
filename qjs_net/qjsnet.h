@@ -4,6 +4,7 @@
 #include <quickjs/quickjs.h>
 
 #define countof(x) (sizeof(x) / sizeof((x)[0]))
+const char* qjs_server = "Server";
 
 static JSValue qjsnet_bind(JSContext *ctx, JSValueConst this_val, int argc,
 								JSValueConst *argv);
