@@ -1,9 +1,5 @@
 #include "qjsnet.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <quickjs/quickjs.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
+
 /**
  * Given a port and maybe an ip, and maybe a socket, bind to a socket.
  * 
@@ -69,21 +65,16 @@ static JSValue qjsnet_socket(JSContext *ctx, JSValueConst this_val, int argc,
 	return JS_NewInt32(ctx, socket(AF_INET, SOCK_STREAM, 0));
 }
 
-static JSValue plusNumbers(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-	int a, b;
-
-	if (JS_ToInt32(ctx, &a, argv[0]))
-		return JS_EXCEPTION;
-
-	if (JS_ToInt32(ctx, &b, argv[1]))
-		return JS_EXCEPTION;
-
-	return JS_NewInt32(ctx, a + b);
-}
 /* Server class */
 typedef struct
 {
+	int port;
+	int socket;
+	int iptype;
+	union ip {
+		struct sockaddr_in* saddr;
+		struct sockaddr_in6* saddr6;
+	} address;
 	int x;
 	int y;
 } JSServerData;
@@ -121,6 +112,7 @@ static JSValue qjsnet_server_ctor(JSContext *ctx,
 	JS_FreeValue(ctx, proto);
 	if (JS_IsException(obj))
 		goto fail;
+
 	JS_SetOpaque(obj, s);
 	return obj;
 fail:
@@ -194,7 +186,7 @@ static int js_qjsnet_init(JSContext *ctx, JSModuleDef *m)
 
 	JS_SetModuleExport(ctx, m, qjs_server, server_class);
 
-	return JS_SetModuleExportList(ctx, m, js_qjsnet_funcs, countof(js_qjsnet_funcs));
+	return JS_SetModuleExportList(ctx, m, qjsnet_funcs, countof(qjsnet_funcs));
 }
 
 JSModuleDef *js_init_module(JSContext *ctx, const char *module_name)
@@ -205,7 +197,7 @@ JSModuleDef *js_init_module(JSContext *ctx, const char *module_name)
 	if (!m)
 		return NULL;
 
-	JS_AddModuleExportList(ctx, m, js_qjsnet_funcs, countof(js_qjsnet_funcs));
+	JS_AddModuleExportList(ctx, m, qjsnet_funcs, countof(qjsnet_funcs));
 
 	JS_AddModuleExport(ctx, m, qjs_server);
 	return m;

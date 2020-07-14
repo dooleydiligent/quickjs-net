@@ -1,4 +1,7 @@
-import { Server } from '/usr/local/lib/libqjsnet.so';
+import { AF_INET, AF_INET6, Server } from '/usr/local/lib/libqjsnet.so';
+
+console.log(`AF_INET is ${AF_INET}`);
+console.log(`AF_INET6 is ${AF_INET6}`);
 
 const assert = (b, str) => {
     if (b) {
@@ -19,7 +22,7 @@ class ColorPoint extends Server {
 };
 
 const main = () => {
-  console.log (`This is main`);
+    console.log(`This is main`);
     let pt = null;
     let pt2 = null;
 
