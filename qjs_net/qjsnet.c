@@ -65,20 +65,6 @@ static JSValue qjsnet_socket(JSContext *ctx, JSValueConst this_val, int argc,
 	return JS_NewInt32(ctx, socket(AF_INET, SOCK_STREAM, 0));
 }
 
-/* Server class */
-typedef struct
-{
-	int port;
-	int socket;
-	int iptype;
-	union ip {
-		struct sockaddr_in* saddr;
-		struct sockaddr_in6* saddr6;
-	} address;
-	int x;
-	int y;
-} JSServerData;
-
 static JSClassID qjsnet_server_class_id;
 
 static void qjsnet_server_finalizer(JSRuntime *rt, JSValue val)
@@ -87,22 +73,48 @@ static void qjsnet_server_finalizer(JSRuntime *rt, JSValue val)
 	/* Note: 's' can be NULL in case JS_SetOpaque() was not called */
 	js_free_rt(rt, s);
 }
+/**
+ * host address can "localhost" or an IPv4 address, incl 0.0.0.0 for all interfaces
+ * Here we just validate that an IP address was passed in and fail if not
+ * 1 is success
+ * 0 or -1 is failure
+ */
+static int qjsnet_get_host_or_ip(JSContext *ctx, JSServerData *s, JSValue arg)
+{
+	struct sockaddr_in sa;
+	char str[INET_ADDRSTRLEN];
+	char *address = JS_ToCString(ctx, arg);
+	if (stricmp(address, "localhost") == 0)
+	{
+		address = "127.0.0.1";
+	}
+	// Try to convert it to an actual ipv4 address
+	return inet_pton(AF_INET, address, &(sa.sin_addr));
+}
 
-static JSValue qjsnet_server_ctor(JSContext *ctx,
-																	JSValueConst new_target,
-																	int argc, JSValueConst *argv)
+/**
+ * new Server(port?, address?)
+ * 
+ * All options are optional.
+ * port defaults to 7981
+ * We only allow IPV4 address atm
+ * address defaults to "0.0.0.0" but we will allow "LoCaLhOsT"
+ */
+static JSValue qjsnet_server_ctor(JSContext *ctx, JSValueConst new_target, int argc, JSValueConst *argv)
 {
 	JSServerData *s;
 	JSValue obj = JS_UNDEFINED;
 	JSValue proto;
+	const char *exception = NULL;
 
 	s = js_mallocz(ctx, sizeof(*s));
 	if (!s)
 		return JS_EXCEPTION;
-	if (JS_ToInt32(ctx, &s->x, argv[0]))
-		goto fail;
-	if (JS_ToInt32(ctx, &s->y, argv[1]))
-		goto fail;
+
+	// Set defaults which can be overridden below
+	s->port = 7981;
+	s->host = "0.0.0.0";
+
 	/* using new_target to get the prototype is necessary when the
        class is extended. */
 	proto = JS_GetPropertyStr(ctx, new_target, "prototype");
@@ -113,47 +125,125 @@ static JSValue qjsnet_server_ctor(JSContext *ctx,
 	if (JS_IsException(obj))
 		goto fail;
 
+	exception = "Expected port to be an integer [0-65535]";
+
+	if (argc > 0)
+		if (JS_ToInt32(ctx, &s->port, argv[0]))
+			goto fail;
+
+	exception = "Invalid host address";
+	if (argc > 1)
+		if (qjsnet_get_host_or_ip(ctx, s, argv[1]) != 1)
+			goto fail;
+
 	JS_SetOpaque(obj, s);
 	return obj;
 fail:
 	js_free(ctx, s);
 	JS_FreeValue(ctx, obj);
+	JS_ThrowTypeError(ctx, "Exception instantiating Server: %s", exception);
 	return JS_EXCEPTION;
 }
 
-static JSValue qjsnet_server_get_xy(JSContext *ctx, JSValueConst this_val, int magic)
+static JSValue qjsnet_server_get_prop(JSContext *ctx, JSValueConst this_val, int magic)
 {
 	JSServerData *s = JS_GetOpaque2(ctx, this_val, qjsnet_server_class_id);
 	if (!s)
 		return JS_EXCEPTION;
-	if (magic == 0)
-		return JS_NewInt32(ctx, s->x);
-	else
-		return JS_NewInt32(ctx, s->y);
+	switch (magic)
+	{
+	case 0:
+		return JS_NewInt32(ctx, s->port);
+		break;
+	case 1:
+		return JS_NewString(ctx, s->host);
+		break;
+	default:
+		return JS_EXCEPTION;
+	}
 }
 
-static JSValue qjsnet_server_set_xy(JSContext *ctx, JSValueConst this_val, JSValue val, int magic)
+static JSValue qjsnet_server_set_prop(JSContext *ctx, JSValueConst this_val, JSValue val, int magic)
 {
 	JSServerData *s = JS_GetOpaque2(ctx, this_val, qjsnet_server_class_id);
 	int v;
 	if (!s)
 		return JS_EXCEPTION;
-	if (JS_ToInt32(ctx, &v, val))
+	switch (magic)
+	{
+	case 0:
+		if (JS_ToInt32(ctx, &v, val))
+			return JS_EXCEPTION;
+		s->port = v;
+		break;
+	case 1:
+		if (qjsnet_get_host_or_ip(ctx, s, val) != 1)
+			return JS_EXCEPTION;
+		break;
+	default:
 		return JS_EXCEPTION;
-	if (magic == 0)
-		s->x = v;
-	else
-		s->y = v;
+	}
 	return JS_UNDEFINED;
 }
-
-static JSValue qjsnet_server_norm(JSContext *ctx, JSValueConst this_val,
-																	int argc, JSValueConst *argv)
+/**
+ * Given an optional port and ip address/hostname, create a socket and listen for incoming connections
+ * 
+ * Should raise a 'listening' event
+ */
+static JSValue qjsnet_server_listen(JSContext *ctx, JSValueConst this_val,
+																		int argc, JSValueConst *argv)
 {
+	const char exception[256];
+	const int max_connections = 5;
 	JSServerData *s = JS_GetOpaque2(ctx, this_val, qjsnet_server_class_id);
 	if (!s)
 		return JS_EXCEPTION;
-	return JS_NewFloat64(ctx, sqrt((double)s->x * s->x + (double)s->y * s->y));
+
+	if (argc > 0)
+		if (JS_ToInt32(ctx, &s->port, argv[0]))
+		{
+			sprintf(exception, "Expected port to be an integer [0-65535] but found %s", argv[0]);
+			goto fail;
+		}
+
+	if (argc > 1)
+	{
+		if (qjsnet_get_host_or_ip(ctx, s, argv[1]) != 1)
+		{
+			sprintf(exception, "Could not interpret host address %s", argv[1]);
+			goto fail;
+		}
+	}
+	int socket_desc;
+	struct sockaddr_in server;
+
+	//Create socket
+	socket_desc = socket(AF_INET, SOCK_STREAM, 0);
+	if (socket_desc == -1)
+	{
+		sprintf(exception, "Could not create socket: %d", socket_desc);
+		goto fail;
+	}
+
+	//Prepare the sockaddr_in structure
+	server.sin_family = AF_INET;
+	if (inet_pton(AF_INET, s->host, &(server.sin_addr)) == -1)
+	{
+		sprintf(exception, "Could not interpret the provided host: %s", s->host);
+		goto fail;
+	}
+	server.sin_port = htons(s->port);
+	if (bind(s->socket, (struct sockaddr *)&s, sizeof(s)) < 0)
+	{
+		sprintf(exception, "Could not bind to socket on %s:%d", s->host, s->port);
+		goto fail;
+	}
+	// listen now
+	listen(s->socket, max_connections);
+	return JS_NewInt32(ctx, 0);
+fail:
+	JS_ThrowTypeError(ctx, "Exception instantiating Server: %s", exception);
+	return JS_EXCEPTION;
 }
 
 static JSClassDef qjsnet_server_class = {
@@ -162,9 +252,10 @@ static JSClassDef qjsnet_server_class = {
 };
 
 static const JSCFunctionListEntry qjsnet_server_proto_funcs[] = {
-		JS_CGETSET_MAGIC_DEF("x", qjsnet_server_get_xy, qjsnet_server_set_xy, 0),
-		JS_CGETSET_MAGIC_DEF("y", qjsnet_server_get_xy, qjsnet_server_set_xy, 1),
-		JS_CFUNC_DEF("norm", 0, qjsnet_server_norm),
+		JS_CGETSET_MAGIC_DEF("port", qjsnet_server_get_prop, qjsnet_server_set_prop, 0),
+		JS_CGETSET_MAGIC_DEF("type", qjsnet_server_get_prop, qjsnet_server_set_prop, 1),
+		JS_CGETSET_MAGIC_DEF("address", qjsnet_server_get_prop, qjsnet_server_set_prop, 2),
+		JS_CFUNC_DEF("listen", 2, qjsnet_server_listen),
 };
 
 static int js_qjsnet_init(JSContext *ctx, JSModuleDef *m)
