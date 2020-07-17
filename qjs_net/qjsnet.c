@@ -83,13 +83,17 @@ static int qjsnet_get_host_or_ip(JSContext *ctx, JSServerData *s, JSValue arg)
 {
 	struct sockaddr_in sa;
 	char str[INET_ADDRSTRLEN];
-	char *address = JS_ToCString(ctx, arg);
-	if (stricmp(address, "localhost") == 0)
+	s->host = JS_ToCString(ctx, arg);
+	// fprintf(stderr,"Input BEFORE: %s\n", s->host);
+	if (strcasecmp(s->host, "localhost") == 0)
 	{
-		address = "127.0.0.1";
+		s->host = "127.0.0.1";
 	}
 	// Try to convert it to an actual ipv4 address
-	return inet_pton(AF_INET, address, &(sa.sin_addr));
+	const int result = inet_pton(AF_INET, s->host, &(sa.sin_addr));
+	// fprintf(stderr,"Input AFTER %s\n", s->host);
+
+	return result;
 }
 
 /**
@@ -98,7 +102,7 @@ static int qjsnet_get_host_or_ip(JSContext *ctx, JSServerData *s, JSValue arg)
  * All options are optional.
  * port defaults to 7981
  * We only allow IPV4 address atm
- * address defaults to "0.0.0.0" but we will allow "LoCaLhOsT"
+ * address defaults to "127.0.0.1" but we will allow "LoCaLhOsT"
  */
 static JSValue qjsnet_server_ctor(JSContext *ctx, JSValueConst new_target, int argc, JSValueConst *argv)
 {
@@ -113,7 +117,7 @@ static JSValue qjsnet_server_ctor(JSContext *ctx, JSValueConst new_target, int a
 
 	// Set defaults which can be overridden below
 	s->port = 7981;
-	s->host = "0.0.0.0";
+	s->host = "127.0.0.1";
 
 	/* using new_target to get the prototype is necessary when the
        class is extended. */
@@ -253,8 +257,7 @@ static JSClassDef qjsnet_server_class = {
 
 static const JSCFunctionListEntry qjsnet_server_proto_funcs[] = {
 		JS_CGETSET_MAGIC_DEF("port", qjsnet_server_get_prop, qjsnet_server_set_prop, 0),
-		JS_CGETSET_MAGIC_DEF("type", qjsnet_server_get_prop, qjsnet_server_set_prop, 1),
-		JS_CGETSET_MAGIC_DEF("address", qjsnet_server_get_prop, qjsnet_server_set_prop, 2),
+		JS_CGETSET_MAGIC_DEF("address", qjsnet_server_get_prop, qjsnet_server_set_prop, 1),
 		JS_CFUNC_DEF("listen", 2, qjsnet_server_listen),
 };
 

@@ -25,26 +25,23 @@ const main = () => {
     console.log(`Validate the server can be instantiated with no parameters (e.g. new Server())`);
     let svr = new Server();
     assert(svr.port === 7981, `Expected port to be 7981 but found ${svr.port}`);
-    assert(svr.type === AF_INET6, `Expected ip type to be AF_INET6 but found ${svr.type}`);
-    assert(svr.address === "localhost", `Expected address to be 'localhost' but found ${svr.address}`);
+    assert(svr.address === "127.0.0.1", `Expected address to be '127.0.0.1' but found ${svr.address}`);
 
     console.log(`Validate the server can be instantiated with only a port (e.g. new Server(3000))`);
     svr = new Server(3000);
     assert(svr.port === 3000, `Expected port to be 3000 but found ${svr.port}`);
-    assert(svr.type === AF_INET6, `Expected ip type to be AF_INET6 but found ${svr.type}`);
-    assert(svr.address === "localhost", `Expected address to be 'localhost' but found ${svr.address}`);
+    assert(svr.address === "127.0.0.1", `Expected address to be '127.0.0.1' but found ${svr.address}`);
 
-    console.log(`Validate the server can be instantiated with a port and an IP type (e.g. new Server(4000, AF_INET))`);
-    svr = new Server(4000, AF_INET);
+    console.log(`Validate the server can be instantiated with a port and an host (e.g. new Server(4000, "localhost"))`);
+    svr = new Server(4000, "localHost");
     assert(svr.port === 4000, `Expected port to be 4000 but found ${svr.port}`);
-    assert(svr.type === AF_INET, `Expected ip type to be AF_INET but found ${svr.type}`);
-    assert(svr.address === "localhost", `Expected address to be 'localhost' but found ${svr.address}`);
+    assert(svr.address === "127.0.0.1", `Expected address to be '127.0.0.1' but found ${svr.address}`);
 
-    console.log(`Validate the server can be instantiated with a port and an IP type and an address (e.g. new Server(5000, AF_INET, '0.0.0.0'))`);
-    svr = new Server(5000, AF_INET, "0.0.0.0");
+    console.log(`Validate the server can be instantiated with a port and an address (e.g. new Server(5000, '0.0.0.0'))`);
+    svr = new Server(5000, "0.0.0.0");
     assert(svr.port === 5000, `Expected port to be 5000 but found ${svr.port}`);
-    assert(svr.type === AF_INET, `Expected ip type to be AF_INET but found ${svr.type}`);
-    const address = svr.address;
+    let address = svr.address;
+    console.log(`Address is ${address}`);
     assert(svr.address.length === 7, `Expected svr.address.length to be 7 but found ${svr.address.length}`);
     for (let i = 0; i < address.length; i+=2) {
         assert(address[i] === '0', `Expected '0' but found "${address[i]}"`);
@@ -55,6 +52,28 @@ const main = () => {
     // TODO: Understand why this does not work.  Probably over doing it with AF_INET and useip
     assert(svr.address == '0.0.0.0', `Expected address to be '0.0.0.0' but found [${svr.address}]`);
 
+    console.log(`Validate the server can be instantiated with a port and an address (e.g. new Server(5000, '192.168.1.2'))`);
+    svr = new Server(5000, "0.0.0.0");
+    assert(svr.port === 5000, `Expected port to be 5000 but found ${svr.port}`);
+    address = svr.address;
+    console.log(`Address is ${address}`);
+    assert(svr.address.length === 7, `Expected svr.address.length to be 7 but found ${svr.address.length}`);
+    for (let i = 0; i < address.length; i+=2) {
+        assert(address[i] === '0', `Expected '0' but found "${address[i]}"`);
+        if (i + 1 < address.length) {
+            assert(address[i+1] === '.', `Expected '.' but found "${address[i+1]}"`);
+        }
+    }
+    // TODO: Understand why this does not work.  Probably over doing it with AF_INET and useip
+    assert(svr.address == '0.0.0.0', `Expected address to be '0.0.0.0' but found [${svr.address}]`);
+
+    console.log(`Validate the server cannot be instantiated with a port and an invalid address (e.g. new Server(6000, '999.999.999.999'))`);
+    try {
+      svr = new Server(6000, "999.999.999.999");
+      assert(svr == 1, "This cannot happen");
+    } catch (ex) {
+      assert(ex == "TypeError: Exception instantiating Server: Invalid host address");
+    }
     console.log(`If you can see this then it passed`);
 }
 console.log(`Beginning`);
