@@ -28,8 +28,8 @@ RUN groupadd -g $GID qjs && useradd -ms /bin/bash -g qjs -u $UID -d /home/qjs qj
 USER qjs
 WORKDIR /app
 # docker build . -t qjs
-# docker run -u 1000:1000 -it -v `pwd`:/app -p 7981:7891 --name qjs qjs /bin/bash
-# qjs src/server.ts s # Creates the server
+# docker run -it -v `pwd`:/app -p 7981:7891 --name qjs --rm qjs /bin/bash
+# qjs src/test_server.ts s # Creates the server
 # Troubleshoot:
 # LD_DEBUG=files qjs src/server.ts
 # run:
