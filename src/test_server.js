@@ -24,18 +24,28 @@ const assert = (b, str) => {
 const main = () => {
     console.log(`Validate the server can be instantiated with no parameters (e.g. new Server())`);
     let svr = new Server();
+    console.log(`server instantiated`);
     assert(svr.port === 7981, `Expected port to be 7981 but found ${svr.port}`);
+    console.log(`Found port ${svr.port}`);
     assert(svr.address === "127.0.0.1", `Expected address to be '127.0.0.1' but found ${svr.address}`);
+    svr.close();
 
     console.log(`Validate the server can be instantiated with only a port (e.g. new Server(3000))`);
     svr = new Server(3000);
+    console.log(`Checking port`);
+    console.log(`Port is ${svr.port}`);
     assert(svr.port === 3000, `Expected port to be 3000 but found ${svr.port}`);
+    console.log(`Checking address`);
     assert(svr.address === "127.0.0.1", `Expected address to be '127.0.0.1' but found ${svr.address}`);
+    console.log(`closing`);
+    svr.close();
+    console.log(`closed`);
 
     console.log(`Validate the server can be instantiated with a port and an host (e.g. new Server(4000, "localhost"))`);
     svr = new Server(4000, "localHost");
     assert(svr.port === 4000, `Expected port to be 4000 but found ${svr.port}`);
     assert(svr.address === "127.0.0.1", `Expected address to be '127.0.0.1' but found ${svr.address}`);
+    svr.close();
 
     console.log(`Validate the server can be instantiated with a port and an address (e.g. new Server(5000, '0.0.0.0'))`);
     svr = new Server(5000, "0.0.0.0");
@@ -51,6 +61,7 @@ const main = () => {
     }
     // TODO: Understand why this does not work.  Probably over doing it with AF_INET and useip
     assert(svr.address == '0.0.0.0', `Expected address to be '0.0.0.0' but found [${svr.address}]`);
+    svr.close();
 
     console.log(`Validate the server can be instantiated with a port and an address (e.g. new Server(5000, '192.168.1.2'))`);
     svr = new Server(5000, "0.0.0.0");
@@ -66,6 +77,7 @@ const main = () => {
     }
     // TODO: Understand why this does not work.  Probably over doing it with AF_INET and useip
     assert(svr.address == '0.0.0.0', `Expected address to be '0.0.0.0' but found [${svr.address}]`);
+    svr.close();
 
     console.log(`Validate the server cannot be instantiated with a port and an invalid address (e.g. new Server(6000, '999.999.999.999'))`);
     try {
@@ -74,6 +86,12 @@ const main = () => {
     } catch (ex) {
       assert(ex == "TypeError: Exception instantiating Server: Invalid host address");
     }
+
+    // Listen tests
+    console.log(`Validate the server can be instantiated and start listening in a single step`)
+    svr = new Server().listen();
+    assert(svr.address == '127.0.0.1', `Expected address to be '127.0.0.1' but found [${svr.address}]`);
+    svr.close();
     console.log(`If you can see this then it passed`);
 }
 console.log(`Beginning`);
