@@ -145,7 +145,7 @@ static void qjsnet_server_finalizer(JSRuntime *rt, JSValue val)
  * address address can "localhost" or an IPv4 address, incl 0.0.0.0 for all interfaces
  * Here we just validate that an IP address was passed in and fail if not
  * 1 is success
- * 0 or -1 is failure
+ * 0 or -1 is failure 
  */
 static int qjsnet_get_address_or_ip(JSContext *ctx, JSServerData *s, JSValue arg)
 {

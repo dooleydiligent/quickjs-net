@@ -63,5 +63,5 @@ static const JSCFunctionListEntry qjsnet_funcs[] = {
 	JS_PROP_INT32_DEF("AF_INET", AF_INET, JS_PROP_NORMAL ),
 	JS_PROP_INT32_DEF("AF_INET6", AF_INET6, JS_PROP_NORMAL ),
 };
-
+ 
 #endif /* QJSNET_H */
