@@ -5,16 +5,20 @@ ARG VERSION=2020-07-05
 ARG UID=1000
 ARG GID=1000
 
+ENV QJSNET_DEBUG=true
+
 RUN apt update -y && apt install --no-install-recommends -y build-essential gcc wget zip patch bash patch \
-    libc6-dev-i386 clang libcurl4-openssl-dev git cmake gcc-multilib ca-certificates libssl-dev nano file
+    libc6-dev-i386 clang libcurl4-openssl-dev git cmake gcc-multilib ca-certificates libssl-dev nano file net-tools \
+    curl telnet
 
-COPY q* /
 # Reduce bandwidth and build time by placing these in the root of your project
-RUN if [ ! -f quickjs-${VERSION}.tar.xz ]; then wget https://bellard.org/quickjs/quickjs-${VERSION}.tar.xz; fi
-RUN if [ ! -f quickjs-extras-${VERSION}.tar.xz ]; then wget https://bellard.org/quickjs/quickjs-extras-${VERSION}.tar.xz; fi
-
-RUN tar -xf quickjs-extras-${VERSION}.tar.xz
-RUN tar -xf quickjs-${VERSION}.tar.xz
+ADD quickjs-${VERSION}.tar.xz .
+ADD quickjs-extras-${VERSION}.tar.xz .
+# OTHERWISE uncomment these next four lines
+#RUN if [ ! -f quickjs-${VERSION}.tar.xz ]; then wget https://bellard.org/quickjs/quickjs-${VERSION}.tar.xz; fi
+#RUN if [ ! -f quickjs-extras-${VERSION}.tar.xz ]; then wget https://bellard.org/quickjs/quickjs-extras-${VERSION}.tar.xz; fi
+#RUN tar -xf quickjs-extras-${VERSION}.tar.xz
+#RUN tar -xf quickjs-${VERSION}.tar.xz
 
 RUN cd /quickjs-${VERSION} && ./release.sh all && make install && cd / && cd /usr/lib && ln -s /usr/local/lib/quickjs . && cd / 
 
