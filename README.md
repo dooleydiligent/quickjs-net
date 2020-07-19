@@ -2,6 +2,9 @@
 - This is a work in progress.  It doesn't actually function, so keep that in mind if you participate
 
 The goal is to provide basic network (AF_NET) functionality to [quickjs](https://bellard.org/quickjs/quickjs.html) for later exploration of an Express-like module and/or [deno](https://deno.land/) - like functionality
+## TODO
+- Use non-blocking socket communication to allow us to continue single-threaded behavior
+- Get a better understanding of js_std_loop so the application can remain running even when there are no pending jobs
 
 ## Build
 ```
@@ -37,9 +40,94 @@ docker run -it -v `pwd`:/app -p 7981:7981 --name qjs --rm qjs /bin/bash
 # then
 qjs src/test_socket.js
 # Output:
-Socket1 is 3
-Socket2 is 4
-Bind to port 3000 successful!
-Could not bind to socket on localhost:3000null
+AF_INET is 2
+AF_INET6 is 10
+Beginning
+Validate the server can be instantiated with no parameters (e.g. new Server())
+QJS_NET - [DEBUG] - qjsnet_server_ctor()
+server instantiated
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>7981)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>7981)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>7981)
+Found port 7981
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=127.0.0.1)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=127.0.0.1)
+QJS_NET - [DEBUG] - qjsnet_server_close()
+QJS_NET - [DEBUG] - All memory released
+Validate the server can be instantiated with only a port (e.g. new Server(3000))
+QJS_NET - [DEBUG] - Port set to 3000
+QJS_NET - [DEBUG] - qjsnet_server_ctor(3000)
+Checking port
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>3000)
+Port is 3000
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>3000)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>3000)
+Checking address
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=127.0.0.1)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=127.0.0.1)
+closing
+QJS_NET - [DEBUG] - qjsnet_server_close()
+QJS_NET - [DEBUG] - All memory released
+closed
+Validate the server can be instantiated with a port and an host (e.g. new Server(4000, "localhost"))
+QJS_NET - [DEBUG] - Port set to 4000
+QJS_NET - [DEBUG] - qjsnet_get_address(localHost)
+QJS_NET - [DEBUG] - qjsnet_server_ctor(4000, 127.0.0.1)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>4000)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>4000)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=127.0.0.1)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=127.0.0.1)
+QJS_NET - [DEBUG] - qjsnet_server_close()
+QJS_NET - [DEBUG] - All memory released
+Validate the server can be instantiated with a port and an address (e.g. new Server(5000, '0.0.0.0'))
+QJS_NET - [DEBUG] - Port set to 5000
+QJS_NET - [DEBUG] - qjsnet_get_address(0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_ctor(5000, 0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>5000)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>5000)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+Address is 0.0.0.0
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_close()
+QJS_NET - [DEBUG] - All memory released
+Validate the server can be instantiated with a port and an address (e.g. new Server(5000, '192.168.1.2'))
+QJS_NET - [DEBUG] - Port set to 5000
+QJS_NET - [DEBUG] - qjsnet_get_address(0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_ctor(5000, 0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>5000)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(PORT=>5000)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+Address is 0.0.0.0
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=0.0.0.0)
+QJS_NET - [DEBUG] - qjsnet_server_close()
+QJS_NET - [DEBUG] - All memory released
+Validate the server cannot be instantiated with a port and an invalid address (e.g. new Server(6000, '999.999.999.999'))
+QJS_NET - [DEBUG] - Port set to 6000
+QJS_NET - [DEBUG] - qjsnet_get_address(999.999.999.999)
+Validate the server can be instantiated and start listening in a single step
+QJS_NET - [DEBUG] - qjsnet_server_ctor()
+QJS_NET - [DEBUG] - setting callback listening
+QJS_NET - [DEBUG] - callback listening is ready
+QJS_NET - [DEBUG] - qjsnet_server_listen()
+QJS_NET - [DEBUG] - qjsnet_server_listen(7981, 127.0.0.1) - created socket 3
+QJS_NET - [DEBUG] - qjsnet_server_listen(7981,127.0.0.1) - listening
+QJS_NET - [DEBUG] - qjsnet_raise_event
+QJS_NET - [DEBUG] - Invoking the callback: listening
+QJS_NET - [DEBUG] - freeing event_name: listening
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=127.0.0.1)
+QJS_NET - [DEBUG] - qjsnet_server_get_prop(HOST=127.0.0.1)
+QJS_NET - [DEBUG] - qjsnet_server_close()
+QJS_NET - [DEBUG] - closing socket 3
+QJS_NET - [DEBUG] - Deleting the event from the list
+QJS_NET - [DEBUG] - Releasing callback code for event listening
+QJS_NET - [DEBUG] - Releasing callback listening
+QJS_NET - [DEBUG] - All memory released
+If you can see this then it passed
+Done
 ```
-I'm not yet sure that that **null** is behind 3000
