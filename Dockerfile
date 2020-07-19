@@ -8,7 +8,8 @@ ARG GID=1000
 ENV QJSNET_DEBUG=true
 
 RUN apt update -y && apt install --no-install-recommends -y build-essential gcc wget zip patch bash patch \
-    libc6-dev-i386 clang libcurl4-openssl-dev git cmake gcc-multilib ca-certificates libssl-dev nano file net-tools
+    libc6-dev-i386 clang libcurl4-openssl-dev git cmake gcc-multilib ca-certificates libssl-dev nano file net-tools \
+    curl telnet
 
 # Reduce bandwidth and build time by placing these in the root of your project
 ADD quickjs-${VERSION}.tar.xz .

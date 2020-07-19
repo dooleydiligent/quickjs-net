@@ -86,11 +86,16 @@ const main = () => {
     } catch (ex) {
       assert(ex == "TypeError: Exception instantiating Server: Invalid host address");
     }
-
+    let message = "The listening callback was not invoked";
     // Listen tests
     console.log(`Validate the server can be instantiated and start listening in a single step`)
-    svr = new Server().listen();
+    svr = new Server()
+    .on('listening', () => {
+      message = `The listening callback was invoked`;
+    })
+    .listen();
     assert(svr.address == '127.0.0.1', `Expected address to be '127.0.0.1' but found [${svr.address}]`);
+    assert(message === "The listening callback was invoked", message);
     svr.close();
     console.log(`If you can see this then it passed`);
 }

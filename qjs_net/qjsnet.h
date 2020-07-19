@@ -11,14 +11,40 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <quickjs/quickjs.h>
-
+#include <pthread.h> //for threading , link with lpthread
+// list.h and these #defines had to be retrieved from quickjs source
+#include "list.h"
 #define countof(x) (sizeof(x) / sizeof((x)[0]))
+#ifndef offsetof
+#define offsetof(type, field) ((size_t) &((type *)0)->field)
+#endif
 
+typedef struct {
+	struct list_head link;
+	JSValue func_obj;
+	JSContext *ctx;
+	JSValueConst *this_obj;
+	const char *event_name;
+} qjsnet_event_callback;
+
+/* Copied from qjsnet.c */
+typedef struct JSJobEntry {
+    struct list_head link;
+    JSContext *ctx;
+    JSJobFunc *job_func;
+    int argc;
+    JSValue argv[0];
+} JSJobEntry;
+
+extern void js_std_loop(JSContext *ctx);
+extern JSValue js_global_eval(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv);
 const char* qjs_server = "Server";
 
 /* Server class */
 typedef struct
 {
+	struct list_head event_list;
 	int port;
 	int socket;
 	const char *address;

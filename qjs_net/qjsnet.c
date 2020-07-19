@@ -1,6 +1,7 @@
 #include "qjsnet.h"
 
 int isdebug = -1;
+
 int qjs_debug_log(JSContext *ctx, const char *format, ...)
 {
 	va_list argp;
@@ -136,6 +137,7 @@ static JSClassID qjsnet_server_class_id;
 static void qjsnet_server_finalizer(JSRuntime *rt, JSValue val)
 {
 	JSServerData *s = JS_GetOpaque(val, qjsnet_server_class_id);
+
 	/* Note: 's' can be NULL in case JS_SetOpaque() was not called */
 	js_free_rt(rt, s);
 }
@@ -186,6 +188,7 @@ static JSValue qjsnet_server_ctor(JSContext *ctx, JSValueConst new_target, int a
 	s->port = 7981;
 	s->address = "127.0.0.1";
 	s->socket = 0;
+	init_list_head(&s->event_list);
 	/* using new_target to get the prototype is necessary when the
        class is extended. */
 	proto = JS_GetPropertyStr(ctx, new_target, "prototype");
@@ -288,12 +291,106 @@ static JSValue qjsnet_server_close(JSContext *ctx, JSValueConst this_val, int ar
 		close(s->socket);
 	}
 	s->socket = 0;
-	// if (JS_VALUE_GET_TAG(s->ref) != JS_TAG_UNINITIALIZED)
-	// 	JS_FreeValue(ctx, s->ref);
+	// Release the event list now
+	struct list_head *el;
+	qjsnet_event_callback *event;
 
+	while (!list_empty(&s->event_list))
+	{
+		el = s->event_list.next;
+		event = list_entry(el, qjsnet_event_callback, link);
+		qjs_debug_log(ctx, "Deleting the event from the list");
+		/* remove the callbac from the event list */
+		list_del(&event->link);
+
+		qjs_debug_log(ctx, "Releasing callback code for event %s", event->event_name);
+		JS_FreeValue(ctx, event->func_obj);
+
+		qjs_debug_log(ctx, "Releasing callback %s", event->event_name);
+		JS_FreeCString(ctx, event->event_name);
+	}
+
+	qjs_debug_log(ctx, "All memory released");
 	return JS_UNDEFINED;
 }
+static JSValue qjsnet_raise_event(JSContext *ctx,
+																	int argc, JSValueConst *argv)
+{
+	// Find and invoke all events with the provided name
+	// The first argv is the event name
+	// The last argv is the "this_val" passed in qjsnet_server_on_event
+	// TODO: process argv between first and last as arguments to the callback
 
+	qjs_debug_log(ctx, "qjsnet_raise_event");
+
+	struct list_head *el;
+	qjsnet_event_callback *event;
+	const char *event_name;
+	JSServerData *s = JS_GetOpaque2(ctx, argv[argc - 1], qjsnet_server_class_id);
+	if (!s)
+	{
+		fprintf(stderr, "Exception: Cannot find server data in qjsnet_raise_event");
+		return JS_EXCEPTION;
+	}
+	event_name = JS_ToCString(ctx, argv[0]);
+	list_for_each(el, &s->event_list)
+	{
+		event = list_entry(el, qjsnet_event_callback, link);
+		if (strcasecmp(event->event_name, event_name) == 0)
+		{
+			// Invoke the callback
+			qjs_debug_log(ctx, "Invoking the callback: %s", event->event_name);
+			JS_Call(ctx, event->func_obj, argv[argc - 1], argc, argv);
+		}
+	}
+	qjs_debug_log(ctx, "freeing event_name: %s", event_name);
+	JS_FreeCString(ctx, event_name);
+	return JS_UNDEFINED;
+}
+static JSValue qjsnet_server_on_event(JSContext *ctx, JSValueConst this_val,
+																			int argc, JSValueConst *argv)
+{
+	qjsnet_event_callback *e;
+	JSServerData *s = JS_GetOpaque2(ctx, this_val, qjsnet_server_class_id);
+	if (!s)
+	{
+		fprintf(stderr, "qjsnet_server_on_event: Could not find server data");
+		goto fail;
+	}
+	if (argc > 0)
+	{
+		if (argc > 1 && JS_IsFunction(ctx, argv[1]))
+		{
+			e = js_malloc(ctx, sizeof(*e) + argc * sizeof(JSValue));
+			if (!e)
+			{
+				fprintf(stderr, "Could not allocate memory for new callback");
+				goto fail;
+			}
+			// TODO : JS_FreeCString(ctx, event_name) in finalizer?
+			e->event_name = JS_ToCString(ctx, argv[0]);
+			qjs_debug_log(ctx, "setting callback %s", e->event_name);
+			e->ctx = ctx;
+			e->func_obj = JS_DupValue(ctx, argv[1]);
+			e->this_obj = &this_val;
+			// Add this listener to the list of listeners
+			list_add_tail(&e->link, &s->event_list);
+			qjs_debug_log(ctx, "callback %s is ready", e->event_name);
+		}
+		else
+		{
+			fprintf(stderr, "event callback is required");
+		}
+	}
+	else
+	{
+		fprintf(stderr, "event name is required");
+		goto fail;
+	}
+	return JS_DupValue(ctx, this_val); // Return the server
+fail:
+	return JS_EXCEPTION;
+}
 /**
  * Given an optional port and ip address/hostname, create a socket and listen for incoming connections
  * 
@@ -304,8 +401,8 @@ static JSValue qjsnet_server_listen(JSContext *ctx, JSValueConst this_val,
 {
 	const char exception[256];
 	const int max_connections = 5;
+	JSValueConst args[2];
 	JSServerData *s = JS_GetOpaque2(ctx, this_val, qjsnet_server_class_id);
-
 	if (!s)
 		return JS_EXCEPTION;
 
@@ -372,6 +469,14 @@ static JSValue qjsnet_server_listen(JSContext *ctx, JSValueConst this_val,
 	// listen now
 	listen(s->socket, max_connections);
 	qjs_debug_log(ctx, "qjsnet_server_listen(%d,%s) - listening", s->port, s->address);
+	// Raise the listening event
+	args[0] = JS_NewString(ctx, "listening");
+	args[1] = JS_DupValue(ctx, this_val);
+	JS_EnqueueJob(ctx, qjsnet_raise_event, 2, args);
+	JS_FreeValue(ctx, args[0]);
+	JS_FreeValue(ctx, args[1]);
+	js_std_loop(ctx);
+
 	return JS_DupValue(ctx, this_val); // Return the server
 fail:
 	s->socket = 0;
@@ -389,6 +494,7 @@ static const JSCFunctionListEntry qjsnet_server_proto_funcs[] = {
 		JS_CGETSET_MAGIC_DEF("port", qjsnet_server_get_prop, qjsnet_server_set_prop, 0),
 		JS_CGETSET_MAGIC_DEF("address", qjsnet_server_get_prop, qjsnet_server_set_prop, 1),
 		JS_CFUNC_DEF("listen", 2, qjsnet_server_listen),
+		JS_CFUNC_DEF("on", 2, qjsnet_server_on_event),
 };
 
 static int js_qjsnet_init(JSContext *ctx, JSModuleDef *m)
