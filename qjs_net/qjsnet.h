@@ -23,7 +23,7 @@ typedef struct {
 	struct list_head link;
 	JSValue func_obj;
 	JSContext *ctx;
-	JSValueConst *this_obj;
+	JSValueConst this_obj;
 	const char *event_name;
 } qjsnet_event_callback;
 
@@ -47,7 +47,8 @@ typedef struct
 	struct list_head event_list;
 	int port;
 	int socket;
-	const char *address;
+	const char address[15];
+	JSContext *ctx;
 } JSServerData;
 int qjs_debug_log(JSContext *ctx, const char *fmt, ...);
 static JSValue qjsnet_bind(JSContext *ctx, JSValueConst this_val, int argc,
