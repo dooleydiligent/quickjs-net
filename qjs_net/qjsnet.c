@@ -145,14 +145,15 @@ static JSClassID qjsnet_server_class_id;
 static int qjsnet_get_address_or_ip(JSContext *ctx, JSServerData *s, JSValue arg)
 {
 	struct sockaddr_in sa;
-	char *address = JS_ToCString(ctx, arg);
-	qjs_debug_log(ctx, "qjsnet_get_address(%s)", address);
+	const char *address = JS_ToCString(ctx, arg);
+	qjs_debug_log(ctx, "qjsnet_get_address_or_ip(%s)", address);
 	// fprintf(stderr,"Input BEFORE: %s\n", s->address);
 	if (strcasecmp(address, "localhost") == 0)
 	{
-		strcpy(s->address, "127.0.0.1");
+		strcpy((char *) &s->address, "127.0.0.1");
 	} else {
-		strcpy(s->address, address);
+		qjs_debug_log(ctx,"qjsnet_get_address_or_ip : copy address %s", address);
+		strcpy((char *) &s->address, address);
 	}
 	JS_FreeCString(ctx, address);
 	// Try to convert it to an actual ipv4 address
@@ -183,8 +184,9 @@ static JSValue qjsnet_server_ctor(JSContext *ctx, JSValueConst new_target, int a
 
 	// Set defaults which can be overridden below
 	s->port = 7981;
-	strcpy(s->address, "127.0.0.1");
+	strcpy((char *) s->address, "127.0.0.1");
 	s->socket = 0;
+	s->max_connections = 5;
 	init_list_head(&s->event_list);
 	/* using new_target to get the prototype is necessary when the class is extended. */
 	proto = JS_GetPropertyStr(ctx, new_target, "prototype");
@@ -205,9 +207,11 @@ static JSValue qjsnet_server_ctor(JSContext *ctx, JSValueConst new_target, int a
 		exception = "Invalid host address";
 		if (argc > 1)
 		{
-			JS_FreeCString(ctx, s->address);
 			if (qjsnet_get_address_or_ip(ctx, s, argv[1]) != 1)
+			{
+				qjs_debug_log(ctx, "Could not convert the address to a valid ip");
 				goto fail;
+			}
 			qjs_debug_log(ctx, "qjsnet_server_ctor(%d, %s)", s->port, s->address);
 		}
 		else
@@ -221,44 +225,52 @@ static JSValue qjsnet_server_ctor(JSContext *ctx, JSValueConst new_target, int a
 	}
 	JS_SetOpaque(obj, s);
 	s->ctx = JS_DupContext(ctx);
+	s->server = obj;
 	return obj;
 fail:
+	qjs_debug_log(ctx, "Freeing server data");
 	js_free(ctx, s);
+	qjs_debug_log(ctx, "Freeing the server itself");
 	JS_FreeValue(ctx, obj);
+	qjs_debug_log(ctx, "Throwing exception");
 	JS_ThrowTypeError(ctx, "Exception instantiating Server: %s", exception);
+	qjs_debug_log(ctx, "Returning JS_EXCEPTION");
 	return JS_EXCEPTION;
 }
 
 static void qjsnet_server_finalizer(JSRuntime *rt, JSValue val)
 {
-	JSServerData *s = JS_GetOpaque(val, qjsnet_server_class_id);
+	fprintf(stderr, "Finalizer invoked\n");
 
+	JSServerData *s = JS_GetOpaque(val, qjsnet_server_class_id);
 	/* Note: 's' can be NULL in case JS_SetOpaque() was not called */
 	// Release the event list now
-	struct list_head *el;
-	qjsnet_event_callback *event;
-
-	while (!list_empty(&s->event_list))
+	if (s) 
 	{
-		el = s->event_list.next;
-		event = list_entry(el, qjsnet_event_callback, link);
-		qjs_debug_log(s->ctx, "Deleting the event from the list");
-		/* remove the callbac from the event list */
-		list_del(&event->link);
+		struct list_head *el;
+		qjsnet_event_callback *event;
+		qjs_debug_log(s->ctx, "Finalizer invoked");
+		while (!list_empty(&s->event_list))
+		{
+			el = s->event_list.next;
+			event = list_entry(el, qjsnet_event_callback, link);
+			qjs_debug_log(s->ctx, "Deleting event callback '%s' from the list", event->event_name);
+			/* remove the callback from the event list */
+			list_del(&event->link);
 
-		qjs_debug_log(s->ctx, "Releasing callback code for event %s", event->event_name);
-		JS_FreeValue(s->ctx, event->func_obj);
+			qjs_debug_log(s->ctx, "Releasing callback code for event '%s'", event->event_name);
+			JS_FreeValue(s->ctx, event->func_obj);
 
-		qjs_debug_log(s->ctx, "Releasing callback %s", event->event_name);
-		JS_FreeCString(s->ctx, event->event_name);
-		qjs_debug_log(s->ctx, "Releasing class reference");
-		JS_FreeValue(s->ctx, event->this_obj);
+			qjs_debug_log(s->ctx, "Releasing callback '%s'", event->event_name);
+			JS_FreeCString(s->ctx, event->event_name);
+			qjs_debug_log(s->ctx, "Releasing class reference");
+			// JS_FreeValue(s->ctx, event->this_obj);
+		}
+
+		qjs_debug_log(s->ctx, "All memory released");
+		JS_FreeContext(s->ctx);
+		js_free_rt(rt, s);
 	}
-
-	qjs_debug_log(s->ctx, "All memory released");
-	JS_FreeContext(s->ctx);
-
-	js_free_rt(rt, s);
 }
 
 static JSValue qjsnet_server_get_prop(JSContext *ctx, JSValueConst this_val, int magic)
@@ -282,6 +294,10 @@ static JSValue qjsnet_server_get_prop(JSContext *ctx, JSValueConst this_val, int
 		qjs_debug_log(ctx, "qjsnet_server_get_prop(SOCKET=%d)", s->socket);
 		return JS_NewInt32(ctx, s->socket);
 		break;
+	case 3:
+	  qjs_debug_log(ctx, "qjsnet_server_get_prop(MAX_CONNECTIONS=%d)", s->max_connections);
+		return JS_NewInt32(ctx, s->max_connections);
+		break;
 	default:
 		return JS_EXCEPTION;
 	}
@@ -301,15 +317,23 @@ static JSValue qjsnet_server_set_prop(JSContext *ctx, JSValueConst this_val, JSV
 		s->port = v;
 		break;
 	case 1:
-		if (s->address) {
-			JS_FreeCString(ctx, s->address);
-		}
 		if (qjsnet_get_address_or_ip(ctx, s, val) != 1)
 			return JS_EXCEPTION;
 		break;
 	case 2:
-	  fprintf(stderr, "Socket is a read-only property");
+		JS_ThrowTypeError(ctx, "Socket is a read-only property");
 	  return JS_EXCEPTION;
+		break;
+	case 3:
+		if (s->socket != 0)
+		{
+			JS_ThrowTypeError(ctx, "Cannot change max_connection after listen is invoked");
+			return JS_EXCEPTION;
+		} else {
+			if (JS_ToInt32(ctx, &v, val))
+				return JS_EXCEPTION;
+			s->max_connections = v;
+		}
 		break;
 	default:
 		return JS_EXCEPTION;
@@ -360,7 +384,7 @@ static JSValue qjsnet_raise_event(JSContext *ctx,
 		{
 			// Invoke the callback
 			qjs_debug_log(ctx, "Invoking the callback: %s", event->event_name);
-			JS_Call(ctx, event->func_obj, argv[argc - 1], argc, argv);
+			JS_Call(ctx, event->func_obj, s->server, argc, argv);
 		}
 	}
 	qjs_debug_log(ctx, "freeing event_name: %s", event_name);
@@ -389,17 +413,18 @@ static JSValue qjsnet_server_on_event(JSContext *ctx, JSValueConst this_val,
 			}
 			// TODO : JS_FreeCString(ctx, event_name) in finalizer?
 			e->event_name = JS_ToCString(ctx, argv[0]);
-			qjs_debug_log(ctx, "setting callback %s", e->event_name);
+			qjs_debug_log(ctx, "setting callback '%s'", e->event_name);
 			e->ctx = ctx;
 			e->func_obj = JS_DupValue(ctx, argv[1]);
-			e->this_obj = JS_DupValue(ctx, this_val);
+			// e->this_obj = JS_DupValue(ctx, this_val);
 			// Add this listener to the list of listeners
 			list_add_tail(&e->link, &s->event_list);
-			qjs_debug_log(ctx, "callback %s is ready", e->event_name);
+			qjs_debug_log(ctx, "callback '%s' is ready", e->event_name);
 		}
 		else
 		{
 			fprintf(stderr, "event callback is required");
+			goto fail;
 		}
 	}
 	else
@@ -407,7 +432,7 @@ static JSValue qjsnet_server_on_event(JSContext *ctx, JSValueConst this_val,
 		fprintf(stderr, "event name is required");
 		goto fail;
 	}
-	return JS_DupValue(ctx, this_val); // Return the server
+	return s->server; // Return the server
 fail:
 	return JS_EXCEPTION;
 }
@@ -420,7 +445,6 @@ static JSValue qjsnet_server_listen(JSContext *ctx, JSValueConst this_val,
 																		int argc, JSValueConst *argv)
 {
 	const char exception[256];
-	const int max_connections = 5;
 	JSValueConst args[2];
 	JSServerData *s = JS_GetOpaque2(ctx, this_val, qjsnet_server_class_id);
 	if (!s)
@@ -487,7 +511,7 @@ static JSValue qjsnet_server_listen(JSContext *ctx, JSValueConst this_val,
 		goto fail;
 	}
 	// listen now
-	listen(s->socket, max_connections);
+	listen(s->socket, s->max_connections);
 	qjs_debug_log(ctx, "qjsnet_server_listen(%d,%s) - listening", s->port, s->address);
 	// Raise the listening event
 	args[0] = JS_NewString(ctx, "listening");
@@ -497,7 +521,7 @@ static JSValue qjsnet_server_listen(JSContext *ctx, JSValueConst this_val,
 	JS_FreeValue(ctx, args[1]);
 	js_std_loop(ctx);
 
-	return JS_DupValue(ctx, this_val); // Return the server
+	return s->server; // Return the server
 fail:
 	s->socket = 0;
 	JS_ThrowTypeError(ctx, "Exception instantiating Server: %s", exception);
@@ -514,6 +538,7 @@ static const JSCFunctionListEntry qjsnet_server_proto_funcs[] = {
 		JS_CGETSET_MAGIC_DEF("port", qjsnet_server_get_prop, qjsnet_server_set_prop, 0),
 		JS_CGETSET_MAGIC_DEF("address", qjsnet_server_get_prop, qjsnet_server_set_prop, 1),
 		JS_CGETSET_MAGIC_DEF("socket", qjsnet_server_get_prop, qjsnet_server_set_prop, 2),
+		JS_CGETSET_MAGIC_DEF("max_connections", qjsnet_server_get_prop, qjsnet_server_set_prop, 3),
 		JS_CFUNC_DEF("listen", 2, qjsnet_server_listen),
 		JS_CFUNC_DEF("on", 2, qjsnet_server_on_event),
 };
